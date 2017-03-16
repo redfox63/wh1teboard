@@ -1,0 +1,190 @@
+<html>
+<head>
+
+	<link rel="stylesheet" href="assets/css/style.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.0/jquery.min.js" type="text/javascript"></script>
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+
+</head>
+<body onresize="resize_canvas()">
+<canvas id="doodle">
+
+</canvas>
+
+
+ <script>
+
+
+function openNav() {
+    document.getElementById("mySidenav").style.width = "60px";
+}
+
+function closeNav() {
+    document.getElementById("mySidenav").style.width = "0px";
+}
+
+ 
+var dimension = [document.documentElement.clientWidth, document.documentElement.clientHeight];
+var c = document.getElementById("doodle");
+c.width = dimension[0];
+c.height = dimension[1];
+
+
+
+$(function(){
+
+	// This demo depends on the canvas element
+	if(!('getContext' in document.createElement('canvas'))){
+		alert('Sorry, it looks like your browser does not support canvas. Try Google');
+		return false;
+	}
+
+	// The URL of your web server (the port is set in app.js)
+	var url = 'http://localhost:8080';
+
+	var doc = $(document),
+		win = $(window),
+		canvas = $('#doodle'),
+		ctx = canvas[0].getContext('2d');
+	
+	// Generate an unique ID
+	var id = Math.round($.now()*Math.random());
+	
+	// A flag for drawing activity
+	var drawing = false;
+
+
+
+	var clients = {};
+	var cursors = {};
+	
+	var offset = $('#doodle').offset();
+
+	var socket = io.connect(url);
+	
+	socket.on('moving', function (data) {
+		
+		if(! (data.id in clients)){
+			// a new user has come online. create a cursor for them
+			cursors[data.id] = $('<div class="cursor">').appendTo('#cursors');
+		}
+		
+		// Move the mouse pointer
+		cursors[data.id].css({
+			'left' : data.x,
+			'top' : data.y
+		});
+		
+		// Is the user drawing?
+		if(data.drawing && clients[data.id]){
+			
+			// Draw a line on the canvas. clients[data.id] holds
+			// the previous position of this user's mouse pointer
+			
+			drawLine(clients[data.id].x, clients[data.id].y, data.x, data.y, data.color);
+		}
+		
+		// Saving the current client state
+		clients[data.id] = data;
+		clients[data.id].updated = $.now();
+	});
+
+	var prev = {};
+	
+	canvas.on('mousedown',function(e){
+		e.preventDefault();
+		drawing = true;
+		prev.x = e.pageX;
+		prev.y = e.pageY;
+		
+	});
+	
+	doc.bind('mouseup mouseleave',function(){
+		drawing = false;
+	});
+
+	var lastEmit = $.now();
+
+	doc.on('mousemove',function(e){
+		if($.now() - lastEmit > 30){
+			socket.emit('mousemove',{
+				'x': e.pageX - offset.left,
+				'y': e.pageY - offset.top,
+				'drawing': drawing,
+				'id': id,
+				'color': ctx.strokeStyle
+			});
+			lastEmit = $.now();
+		}
+		
+		// Draw a line for the current user's movement, as it is
+		// not received in the socket.on('moving') event above
+		
+		if(drawing){
+			
+			drawLine(prev.x - offset.left, prev.y - offset.top, e.pageX - offset.left, e.pageY - offset.top, ctx.strokeStyle);
+
+			
+			prev.x = e.pageX;
+			prev.y = e.pageY;
+		}
+	});
+
+	// Remove inactive clients after 10 seconds of inactivity
+	setInterval(function(){
+		
+		for(ident in clients){
+			if($.now() - clients[ident].updated > 10000){
+				
+				// Last update was more than 10 seconds ago. 
+				// This user has probably closed the page
+				
+				cursors[ident].remove();
+				delete clients[ident];
+				delete cursors[ident];
+			}
+		}
+		
+	},10000);
+
+	$("#clear").click(function(){
+    ctx.clearRect(0, 0, 9999, 9999);
+	socket.emit('clear');
+});
+
+	socket.on('clearRect', function (){
+    ctx.clearRect(0, 0, 9999, 9999);
+});
+
+	function drawLine(fromx, fromy, tox, toy, style){
+		ctx.beginPath();
+		ctx.moveTo(fromx, fromy);
+		ctx.lineTo(tox, toy);
+		ctx.strokeStyle = style;
+		ctx.stroke();
+	}
+	$("#redbtn").click(function(){
+		ctx.strokeStyle = '#ff0000';
+
+	});
+	$("#blackbtn").click(function(){
+	ctx.strokeStyle = '#000000';
+
+	});
+
+});		
+</script>
+
+<img class="logo1" src="https://cdn4.iconfinder.com/data/icons/flat-icon-set/2125/flat_icons-graficheria.it-08.png" style="width:50px;height:50px;"id="clear">
+
+ <div id="mySidenav" class="sidenav">
+  		<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
+ 	    <img src="http://www.free-icons-download.net/images/brush-icon-66000.png" style="width:50px;height:50px;"id="redbtn">
+ 	    <img src="http://i.imgur.com/yXEQllW.png" style="width:50px;height:50px;"id="blackbtn">
+ </div>
+ <span class="navtoggle" onclick="openNav()">&#9776; Brush Options</span>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.4.5/socket.io.js"></script>
+	<script type="text/javascript">
+</body>
+</html>
